@@ -1,0 +1,30 @@
+[project]
+name = "neuraprop-ai"
+version = "0.1.0"
+description = "AI-powered customer support platform for proprietary trading firms"
+requires-python = ">=3.12"
+
+[tool.uv.workspace]
+members = [
+    "libs/core",
+    "libs/testing",
+    "services/gateway",
+    "services/agents",
+    "services/channels",
+    "services/integrations",
+]
+
+[tool.uv.sources]
+neuraprop-core = { workspace = true }
+neuraprop-testing = { workspace = true }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["src/tests"]
