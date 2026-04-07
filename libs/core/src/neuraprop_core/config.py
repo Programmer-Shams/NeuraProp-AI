@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # Auth
     clerk_secret_key: str = ""
 
+    # Encryption
+    encryption_key: str = ""  # Base64-encoded 32-byte key for AES-256-GCM
+
     # Email
     sendgrid_api_key: str = ""
 
