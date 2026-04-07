@@ -1611,12 +1611,14 @@ version = "0.1.0"
 source = { editable = "services/integrations" }
 dependencies = [
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "neuraprop-core" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.0" },
+    { name = "jinja2", specifier = ">=3.1.0" },
     { name = "neuraprop-core", editable = "libs/core" },
 ]
 
