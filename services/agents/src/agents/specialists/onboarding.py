@@ -1,7 +1,8 @@
 """Onboarding/Welcome specialist agent."""
 
-from typing import Any
 from agents.specialists.base import BaseSpecialistAgent
+from agents.tools.base import BaseTool
+from agents.tools.onboarding_tools import get_onboarding_tools
 
 
 class OnboardingAgent(BaseSpecialistAgent):
@@ -16,14 +17,10 @@ platform setup, and answer getting-started questions with enthusiasm and clarity
 
     knowledge_scope = ["getting_started", "platform_setup", "challenge_overview"]
     risk_level = "medium"
+    max_tool_calls = 4
 
-    async def get_tools(self, firm_id: str) -> list[dict[str, Any]]:
-        return [
-            {"name": "get_available_challenges", "description": "List available challenge types"},
-            {"name": "create_challenge_account", "description": "Create a new challenge account"},
-            {"name": "send_welcome_email", "description": "Send welcome email with setup instructions"},
-            {"name": "generate_platform_credentials", "description": "Generate trading platform credentials"},
-        ]
+    def get_tool_instances(self) -> list[BaseTool]:
+        return get_onboarding_tools()
 
     async def build_system_prompt(self, firm_id: str, trader_profile: dict | None = None) -> str:
         return self.system_prompt_template.format(firm_name="Trading Firm", firm_specific_rules="")

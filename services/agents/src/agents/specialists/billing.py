@@ -1,7 +1,8 @@
 """Billing/Refund specialist agent."""
 
-from typing import Any
 from agents.specialists.base import BaseSpecialistAgent
+from agents.tools.base import BaseTool
+from agents.tools.billing_tools import get_billing_tools
 
 
 class BillingAgent(BaseSpecialistAgent):
@@ -16,15 +17,11 @@ and fee explanations. Always verify eligibility before processing refunds.
 
     knowledge_scope = ["pricing", "refund_policy", "promotion_terms"]
     risk_level = "high"
+    max_tool_calls = 5
+    escalation_triggers = ["chargeback", "fraud", "unauthorized"]
 
-    async def get_tools(self, firm_id: str) -> list[dict[str, Any]]:
-        return [
-            {"name": "get_billing_history", "description": "Get trader's billing history"},
-            {"name": "get_subscription_details", "description": "Get subscription details"},
-            {"name": "process_refund", "description": "Process a refund request"},
-            {"name": "apply_discount_code", "description": "Apply a discount/promo code"},
-            {"name": "generate_invoice", "description": "Generate an invoice"},
-        ]
+    def get_tool_instances(self) -> list[BaseTool]:
+        return get_billing_tools()
 
     async def build_system_prompt(self, firm_id: str, trader_profile: dict | None = None) -> str:
         return self.system_prompt_template.format(firm_name="Trading Firm", firm_specific_rules="")

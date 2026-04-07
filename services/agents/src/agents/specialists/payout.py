@@ -1,8 +1,8 @@
 """Payout/Withdrawal specialist agent — handles the highest volume ticket category."""
 
-from typing import Any
-
 from agents.specialists.base import BaseSpecialistAgent
+from agents.tools.base import BaseTool
+from agents.tools.payout_tools import get_payout_tools
 
 
 class PayoutAgent(BaseSpecialistAgent):
@@ -23,27 +23,24 @@ Rules:
 - For payouts above ${auto_approve_limit}, flag for human approval
 - Never share other traders' payout information
 - Be transparent about processing timelines
+- If a payout was denied, explain why clearly and offer alternatives
 - If you cannot resolve the issue, escalate to human support
+
+Always use the available tools to look up real data rather than guessing.
+Respond in a professional but friendly tone.
 
 {firm_specific_rules}"""
 
     knowledge_scope = ["payout_policy", "payment_methods", "payout_schedule"]
     risk_level = "high"
     max_tool_calls = 5
-    escalation_triggers = ["fraud", "chargeback", "legal"]
+    escalation_triggers = ["fraud", "chargeback", "legal", "dispute"]
 
-    async def get_tools(self, firm_id: str) -> list[dict[str, Any]]:
-        return [
-            {"name": "check_payout_eligibility", "description": "Check if trader is eligible for payout"},
-            {"name": "get_payout_history", "description": "Get trader's payout history"},
-            {"name": "get_account_balance", "description": "Get current account balance"},
-            {"name": "initiate_payout", "description": "Initiate a payout request"},
-            {"name": "check_payout_status", "description": "Check status of a pending payout"},
-            {"name": "cancel_payout", "description": "Cancel a pending payout request"},
-        ]
+    def get_tool_instances(self) -> list[BaseTool]:
+        return get_payout_tools()
 
     async def build_system_prompt(self, firm_id: str, trader_profile: dict | None = None) -> str:
-        # TODO: Load firm-specific config from DB
+        # TODO: Load firm-specific config from DB (firm name, auto-approve limit, rules)
         return self.system_prompt_template.format(
             firm_name="Trading Firm",
             auto_approve_limit=500,

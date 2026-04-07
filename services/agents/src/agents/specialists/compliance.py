@@ -1,7 +1,8 @@
 """Compliance specialist agent — always escalates actions to human review."""
 
-from typing import Any
 from agents.specialists.base import BaseSpecialistAgent
+from agents.tools.base import BaseTool
+from agents.tools.compliance_tools import get_compliance_tools
 
 
 class ComplianceAgent(BaseSpecialistAgent):
@@ -16,13 +17,11 @@ IMPORTANT: Never make binding compliance decisions. Always escalate action items
 
     knowledge_scope = ["regulatory_docs", "compliance_policies", "restricted_jurisdictions"]
     risk_level = "critical"
+    max_tool_calls = 3
+    escalation_triggers = ["sanction", "aml", "fraud", "legal action"]
 
-    async def get_tools(self, firm_id: str) -> list[dict[str, Any]]:
-        return [
-            {"name": "get_compliance_status", "description": "Get trader's compliance status"},
-            {"name": "flag_compliance_issue", "description": "Flag an issue for compliance review"},
-            {"name": "check_trading_restrictions", "description": "Check jurisdiction-based restrictions"},
-        ]
+    def get_tool_instances(self) -> list[BaseTool]:
+        return get_compliance_tools()
 
     async def build_system_prompt(self, firm_id: str, trader_profile: dict | None = None) -> str:
         return self.system_prompt_template.format(firm_name="Trading Firm", firm_specific_rules="")

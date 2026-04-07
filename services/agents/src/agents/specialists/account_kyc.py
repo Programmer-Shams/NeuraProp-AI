@@ -1,8 +1,8 @@
 """Account/KYC specialist agent."""
 
-from typing import Any
-
 from agents.specialists.base import BaseSpecialistAgent
+from agents.tools.base import BaseTool
+from agents.tools.account_tools import get_account_tools
 
 
 class AccountKYCAgent(BaseSpecialistAgent):
@@ -28,16 +28,10 @@ Rules:
 
     knowledge_scope = ["kyc_requirements", "account_management", "platform_guides"]
     risk_level = "medium"
+    escalation_triggers = ["close account", "delete data", "gdpr"]
 
-    async def get_tools(self, firm_id: str) -> list[dict[str, Any]]:
-        return [
-            {"name": "get_kyc_status", "description": "Check KYC verification status"},
-            {"name": "initiate_kyc_verification", "description": "Start KYC verification process"},
-            {"name": "get_account_details", "description": "Get trader account details"},
-            {"name": "reset_trading_account", "description": "Reset a trading account"},
-            {"name": "upgrade_account", "description": "Upgrade account tier"},
-            {"name": "link_trading_account", "description": "Link a trading platform account"},
-        ]
+    def get_tool_instances(self) -> list[BaseTool]:
+        return get_account_tools()
 
     async def build_system_prompt(self, firm_id: str, trader_profile: dict | None = None) -> str:
         return self.system_prompt_template.format(

@@ -1,8 +1,8 @@
 """Rules/Challenge specialist agent — answers questions about trading rules and evaluations."""
 
-from typing import Any
-
 from agents.specialists.base import BaseSpecialistAgent
+from agents.tools.base import BaseTool
+from agents.tools.rules_tools import get_rules_tools
 
 
 class RulesAgent(BaseSpecialistAgent):
@@ -28,15 +28,11 @@ Rules:
 
     knowledge_scope = ["challenge_rules", "evaluation_criteria", "trading_restrictions"]
     risk_level = "low"
-    max_tool_calls = 3
+    max_tool_calls = 4
+    escalation_triggers = ["dispute", "unfair", "lawsuit"]
 
-    async def get_tools(self, firm_id: str) -> list[dict[str, Any]]:
-        return [
-            {"name": "get_challenge_rules", "description": "Get current challenge rules and parameters"},
-            {"name": "get_trader_challenge_status", "description": "Get trader's current challenge progress"},
-            {"name": "get_rule_violation_history", "description": "Get trader's rule violation history"},
-            {"name": "check_specific_rule", "description": "Look up a specific trading rule"},
-        ]
+    def get_tool_instances(self) -> list[BaseTool]:
+        return get_rules_tools()
 
     async def build_system_prompt(self, firm_id: str, trader_profile: dict | None = None) -> str:
         return self.system_prompt_template.format(
