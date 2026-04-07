@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "neuraprop-core",
     "discord.py>=2.4.0",
+    "httpx>=0.28.0",
 ]
 
 [build-system]

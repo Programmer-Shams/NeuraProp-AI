@@ -14,6 +14,7 @@ from neuraprop_core.redis import close_redis
 from gateway.middleware.tenant import TenantMiddleware
 from gateway.middleware.rate_limit import RateLimitMiddleware
 from gateway.routes import messages, conversations, traders, knowledge, admin, health
+from channels.webchat.routes import router as webchat_router
 
 logger = get_logger(__name__)
 
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(traders.router, prefix="/api/v1", tags=["Traders"])
     app.include_router(knowledge.router, prefix="/api/v1", tags=["Knowledge Base"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+    app.include_router(webchat_router, tags=["WebChat"])
 
     return app
 
