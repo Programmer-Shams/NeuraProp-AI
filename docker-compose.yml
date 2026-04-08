@@ -1,0 +1,186 @@
+# Full-stack NeuraProp AI — run everything with `docker compose up`
+# For development infra only (Postgres, Redis, LocalStack), use infra/docker/docker-compose.yml
+
+services:
+  # --- Infrastructure ---
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: neuraprop-postgres
+    environment:
+      POSTGRES_USER: neuraprop
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-neuraprop}
+      POSTGRES_DB: neuraprop
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neuraprop"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: neuraprop-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:latest
+    container_name: neuraprop-localstack
+    environment:
+      SERVICES: sqs,s3
+      DEFAULT_REGION: us-east-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./infra/docker/init-localstack.sh:/etc/localstack/init/ready.d/init.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Application Services ---
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    container_name: neuraprop-gateway
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://neuraprop:${DB_PASSWORD:-neuraprop}@postgres:5432/neuraprop
+      DATABASE_URL_SYNC: postgresql://neuraprop:${DB_PASSWORD:-neuraprop}@postgres:5432/neuraprop
+      REDIS_URL: redis://redis:6379/0
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_INBOUND_QUEUE_URL: http://localstack:4566/000000000000/neuraprop-inbound
+      SQS_OUTBOUND_QUEUE_URL: http://localstack:4566/000000000000/neuraprop-outbound
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  agents:
+    build:
+      context: .
+      dockerfile: services/agents/Dockerfile
+    container_name: neuraprop-agents
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://neuraprop:${DB_PASSWORD:-neuraprop}@postgres:5432/neuraprop
+      DATABASE_URL_SYNC: postgresql://neuraprop:${DB_PASSWORD:-neuraprop}@postgres:5432/neuraprop
+      REDIS_URL: redis://redis:6379/0
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_INBOUND_QUEUE_URL: http://localstack:4566/000000000000/neuraprop-inbound
+      SQS_OUTBOUND_QUEUE_URL: http://localstack:4566/000000000000/neuraprop-outbound
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  channels:
+    build:
+      context: .
+      dockerfile: services/channels/Dockerfile
+    container_name: neuraprop-channels
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://neuraprop:${DB_PASSWORD:-neuraprop}@postgres:5432/neuraprop
+      REDIS_URL: redis://redis:6379/0
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_INBOUND_QUEUE_URL: http://localstack:4566/000000000000/neuraprop-inbound
+      SQS_OUTBOUND_QUEUE_URL: http://localstack:4566/000000000000/neuraprop-outbound
+    depends_on:
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_API_URL: ${API_BASE_URL:-http://localhost:8000}
+    container_name: neuraprop-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Reverse Proxy ---
+
+  nginx:
+    image: nginx:alpine
+    container_name: neuraprop-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      gateway:
+        condition: service_healthy
+      dashboard:
+        condition: service_started
+    restart: unless-stopped
+
+  # --- Database Migrations (run once) ---
+
+  migrate:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    container_name: neuraprop-migrate
+    env_file: .env
+    environment:
+      DATABASE_URL_SYNC: postgresql://neuraprop:${DB_PASSWORD:-neuraprop}@postgres:5432/neuraprop
+    volumes:
+      - ./migrations:/app/migrations
+    command: ["uv", "run", "alembic", "-c", "migrations/alembic.ini", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  postgres_data:
+  redis_data:
+  localstack_data:
