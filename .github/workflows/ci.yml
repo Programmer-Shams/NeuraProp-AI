@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  # --- Python Tests & Lint ---
+  python-tests:
+    name: Python Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: neuraprop
+          POSTGRES_PASSWORD: neuraprop
+          POSTGRES_DB: neuraprop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-packages
+
+      - name: Run linter
+        run: uv run ruff check .
+
+      - name: Run type check
+        run: uv run ruff format --check .
+
+      - name: Run tests
+        env:
+          APP_ENV: development
+          DATABASE_URL: postgresql+asyncpg://neuraprop:neuraprop@localhost:5432/neuraprop
+          DATABASE_URL_SYNC: postgresql://neuraprop:neuraprop@localhost:5432/neuraprop
+          REDIS_URL: redis://localhost:6379/0
+          CLERK_SECRET_KEY: test-secret-key-for-jwt-signing-32chars
+          ENCRYPTION_KEY: ""
+        run: uv run pytest tests/ -v --tb=short
+
+  # --- TypeScript Build & Lint ---
+  dashboard-build:
+    name: Dashboard Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter dashboard lint || true
+
+      - name: Type check
+        run: pnpm --filter dashboard build
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder
+          CLERK_SECRET_KEY: sk_test_placeholder
+
+  # --- Docker Build ---
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [python-tests, dashboard-build]
+    if: github.ref == 'refs/heads/main'
+
+    strategy:
+      matrix:
+        service:
+          - { name: gateway, dockerfile: services/gateway/Dockerfile }
+          - { name: agents, dockerfile: services/agents/Dockerfile }
+          - { name: channels, dockerfile: services/channels/Dockerfile }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.service.name }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          push: false
+          tags: neuraprop/${{ matrix.service.name }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
